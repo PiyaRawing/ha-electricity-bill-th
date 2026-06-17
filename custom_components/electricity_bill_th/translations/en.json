@@ -1,0 +1,25 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Thai Electricity Bill Setup",
+        "description": "Please configure your electricity bill calculation parameters.",
+        "data": {
+          "provider": "Electricity Provider",
+          "tariff_type": "Tariff Type",
+          "billing_date": "Billing Date (1-31)",
+          "ft_rate": "Ft Rate (THB/kWh)",
+          "energy_imported": "Imported Energy Entity (kWh)",
+          "energy_exported": "Exported Energy Entity (kWh) - Optional"
+        }
+      }
+    },
+    "error": {
+      "invalid_date": "Billing date must be between 1 and 31.",
+      "invalid_ft": "Invalid Ft rate."
+    },
+    "abort": {
+      "already_configured": "This calculation is already configured."
+    }
+  }
+}

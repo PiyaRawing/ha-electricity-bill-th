@@ -1,0 +1,12 @@
+{
+  "domain": "electricity_bill_th",
+  "name": "Thai Electricity Bill",
+  "codeowners": ["@PiyaRawing"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/PiyaRawing/ha-electricity-bill-th",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/PiyaRawing/ha-electricity-bill-th/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}
