@@ -61,12 +61,17 @@ class ElectricityBillCoordinator:
         self.hass = hass
         self.entry_id = config_entry.entry_id
         self.title = config_entry.title
-        self.provider = config_entry.data.get(CONF_PROVIDER)
-        self.tariff_type = config_entry.data.get(CONF_TARIFF_TYPE)
-        self.billing_date = config_entry.data.get(CONF_BILLING_DATE, 14)
-        self.ft_rate = config_entry.data.get(CONF_FT_RATE, 0.1623)
-        self.energy_imported_id = config_entry.data.get(CONF_ENERGY_IMPORTED)
-        self.energy_exported_id = config_entry.data.get(CONF_ENERGY_EXPORTED)
+        
+        # เช็คว่ามีค่าจากการ Re-config ไหม ถ้ามีให้ใช้อันนั้น ถ้าไม่มีให้ใช้ค่าแรกตอนติดตั้ง
+        config = config_entry.options if config_entry.options else config_entry.data
+        
+        self.provider = config_entry.data.get(CONF_PROVIDER) # การไฟฟ้า ไม่ให้เปลี่ยน
+        self.tariff_type = config.get(CONF_TARIFF_TYPE)
+        self.billing_date = config.get(CONF_BILLING_DATE, 14)
+        self.ft_rate = config.get(CONF_FT_RATE, 0.1623)
+        self.energy_imported_id = config.get(CONF_ENERGY_IMPORTED)
+        self.energy_exported_id = config.get(CONF_ENERGY_EXPORTED)
+        
         self.data = {k: 0.0 for k in SENSOR_TYPES.keys()}
         self.entities = []
         self._baseline_imported = None
