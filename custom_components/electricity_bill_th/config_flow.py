@@ -1,6 +1,7 @@
 """Config flow for Thai Electricity Bill integration."""
 from __future__ import annotations
 
+import logging
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
@@ -15,6 +16,8 @@ from .const import (
     CONF_ENERGY_IMPORTED,
     CONF_ENERGY_EXPORTED,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 class ElectricityBillConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Thai Electricity Bill."""
@@ -37,13 +40,9 @@ class ElectricityBillConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self.provider = user_input[CONF_PROVIDER]
             return await self.async_step_details()
 
+        # ใช้ vol.In เพื่อความเข้ากันได้ 100% กับ HA ทุกเวอร์ชั่น
         data_schema = vol.Schema({
-            vol.Required(CONF_PROVIDER, default="MEA"): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=["MEA", "PEA"],
-                    mode=selector.SelectSelectorMode.DROPDOWN
-                )
-            )
+            vol.Required(CONF_PROVIDER, default="MEA"): vol.In({"MEA": "MEA", "PEA": "PEA"})
         })
 
         return self.async_show_form(
@@ -57,33 +56,37 @@ class ElectricityBillConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            if not (1 <= int(user_input[CONF_BILLING_DATE]) <= 31):
+            try:
+                b_date = int(user_input[CONF_BILLING_DATE])
+                if not (1 <= b_date <= 31):
+                    errors["base"] = "invalid_date"
+            except ValueError:
                 errors["base"] = "invalid_date"
-            else:
+                
+            if not errors:
                 user_input[CONF_PROVIDER] = self.provider 
                 title = f"{self.provider} ({user_input[CONF_TARIFF_TYPE]})"
                 return self.async_create_entry(title=title, data=user_input)
 
+        # ใช้ vol.In เป็น Dictionary พื้นฐาน ไม่แครชแน่นอน
         if self.provider == "PEA":
-            options = [
-                selector.SelectOptionDict(value="1.1.1", label="1.1.1 (บ้านที่ใช้ไฟไม่เกิน 150 หน่วย)"),
-                selector.SelectOptionDict(value="1.1.2", label="1.1.2 (บ้านที่ใช้ไฟเกิน 150 หน่วย)"),
-                selector.SelectOptionDict(value="1.2.2", label="1.2.2 (TOU แรงดัน < 22kV)"),
-            ]
+            tariffs = {
+                "1.1.1": "1.1.1 (บ้านที่ใช้ไฟไม่เกิน 150 หน่วย)",
+                "1.1.2": "1.1.2 (บ้านที่ใช้ไฟเกิน 150 หน่วย)",
+                "1.2.2": "1.2.2 (TOU แรงดัน < 22kV)"
+            }
             default_tariff = "1.1.2"
         else:
-            options = [
-                selector.SelectOptionDict(value="1.1", label="1.1 (บ้านที่ใช้ไฟไม่เกิน 150 หน่วย)"),
-                selector.SelectOptionDict(value="1.2", label="1.2 (บ้านที่ใช้ไฟเกิน 150 หน่วย)"),
-                selector.SelectOptionDict(value="1.3.2", label="1.3.2 (TOU แรงดัน < 22kV)"),
-            ]
+            tariffs = {
+                "1.1": "1.1 (บ้านที่ใช้ไฟไม่เกิน 150 หน่วย)",
+                "1.2": "1.2 (บ้านที่ใช้ไฟเกิน 150 หน่วย)",
+                "1.3.2": "1.3.2 (TOU แรงดัน < 22kV)"
+            }
             default_tariff = "1.2"
 
         data_schema = vol.Schema(
             {
-                vol.Required(CONF_TARIFF_TYPE, default=default_tariff): selector.SelectSelector(
-                    selector.SelectSelectorConfig(options=options, mode=selector.SelectSelectorMode.DROPDOWN)
-                ),
+                vol.Required(CONF_TARIFF_TYPE, default=default_tariff): vol.In(tariffs),
                 vol.Required(CONF_BILLING_DATE, default=14): vol.All(vol.Coerce(int), vol.Range(min=1, max=31)),
                 vol.Required(CONF_FT_RATE, default=0.1623): vol.Coerce(float),
                 vol.Required(CONF_ENERGY_IMPORTED): selector.EntitySelector(
@@ -112,72 +115,75 @@ class ElectricityBillOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         """Manage the options."""
         errors = {}
-        if user_input is not None:
-            if not (1 <= int(user_input.get(CONF_BILLING_DATE, 14)) <= 31):
-                errors["base"] = "invalid_date"
+        try:
+            if user_input is not None:
+                try:
+                    b_date = int(user_input[CONF_BILLING_DATE])
+                    if not (1 <= b_date <= 31):
+                        errors["base"] = "invalid_date"
+                except ValueError:
+                    errors["base"] = "invalid_date"
+                    
+                if not errors:
+                    return self.async_create_entry(title="", data=user_input)
+
+            config = self.config_entry.options if self.config_entry.options else self.config_entry.data
+            provider = self.config_entry.data.get(CONF_PROVIDER, "MEA")
+
+            if provider == "PEA":
+                tariffs = {
+                    "1.1.1": "1.1.1 (บ้านที่ใช้ไฟไม่เกิน 150 หน่วย)",
+                    "1.1.2": "1.1.2 (บ้านที่ใช้ไฟเกิน 150 หน่วย)",
+                    "1.2.2": "1.2.2 (TOU แรงดัน < 22kV)"
+                }
             else:
-                return self.async_create_entry(title="", data=user_input)
+                tariffs = {
+                    "1.1": "1.1 (บ้านที่ใช้ไฟไม่เกิน 150 หน่วย)",
+                    "1.2": "1.2 (บ้านที่ใช้ไฟเกิน 150 หน่วย)",
+                    "1.3.2": "1.3.2 (TOU แรงดัน < 22kV)"
+                }
 
-        config = self.config_entry.options if self.config_entry.options else self.config_entry.data
-        provider = self.config_entry.data.get(CONF_PROVIDER, "MEA")
+            # ดักบัค Error 500: ถ้าค่าเริ่มต้นไม่อยู่ในลิสต์ ให้เอาตัวแรกในลิสต์มาใช้เลย
+            tariff = config.get(CONF_TARIFF_TYPE)
+            if tariff not in tariffs:
+                tariff = list(tariffs.keys())[0]
+            
+            try: b_date = int(config.get(CONF_BILLING_DATE, 14))
+            except (ValueError, TypeError): b_date = 14
+            
+            try: ft = float(config.get(CONF_FT_RATE, 0.1623))
+            except (ValueError, TypeError): ft = 0.1623
+            
+            imp = config.get(CONF_ENERGY_IMPORTED)
+            exp = config.get(CONF_ENERGY_EXPORTED)
 
-        # เปลี่ยนมาใช้ Dictionary ธรรมดา เพื่อป้องกันบัคใน Home Assistant บางเวอร์ชั่น
-        if provider == "PEA":
-            options = [
-                {"value": "1.1.1", "label": "1.1.1 (บ้านที่ใช้ไฟไม่เกิน 150 หน่วย)"},
-                {"value": "1.1.2", "label": "1.1.2 (บ้านที่ใช้ไฟเกิน 150 หน่วย)"},
-                {"value": "1.2.2", "label": "1.2.2 (TOU แรงดัน < 22kV)"},
-            ]
-        else:
-            options = [
-                {"value": "1.1", "label": "1.1 (บ้านที่ใช้ไฟไม่เกิน 150 หน่วย)"},
-                {"value": "1.2", "label": "1.2 (บ้านที่ใช้ไฟเกิน 150 หน่วย)"},
-                {"value": "1.3.2", "label": "1.3.2 (TOU แรงดัน < 22kV)"},
-            ]
+            schema_dict = {
+                vol.Required(CONF_TARIFF_TYPE, default=tariff): vol.In(tariffs),
+                vol.Required(CONF_BILLING_DATE, default=b_date): vol.All(vol.Coerce(int), vol.Range(min=1, max=31)),
+                vol.Required(CONF_FT_RATE, default=ft): vol.Coerce(float),
+            }
 
-        schema_dict = {}
+            if imp:
+                schema_dict[vol.Required(CONF_ENERGY_IMPORTED, default=imp)] = selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
+                )
+            else:
+                schema_dict[vol.Required(CONF_ENERGY_IMPORTED)] = selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
+                )
 
-        # 1. Tariff Type (เขียนเช็คกันค่าว่างเพื่อป้องกัน Error 500)
-        tariff = config.get(CONF_TARIFF_TYPE)
-        if tariff:
-            schema_dict[vol.Required(CONF_TARIFF_TYPE, default=tariff)] = selector.SelectSelector(
-                selector.SelectSelectorConfig(options=options, mode=selector.SelectSelectorMode.DROPDOWN)
+            if exp:
+                schema_dict[vol.Optional(CONF_ENERGY_EXPORTED, default=exp)] = selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
+                )
+            else:
+                schema_dict[vol.Optional(CONF_ENERGY_EXPORTED)] = selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
+                )
+
+            return self.async_show_form(
+                step_id="init", data_schema=vol.Schema(schema_dict), errors=errors
             )
-        else:
-            schema_dict[vol.Required(CONF_TARIFF_TYPE)] = selector.SelectSelector(
-                selector.SelectSelectorConfig(options=options, mode=selector.SelectSelectorMode.DROPDOWN)
-            )
-
-        # 2. Billing Date
-        b_date = config.get(CONF_BILLING_DATE, 14)
-        schema_dict[vol.Required(CONF_BILLING_DATE, default=int(b_date))] = vol.All(vol.Coerce(int), vol.Range(min=1, max=31))
-
-        # 3. FT Rate
-        ft = config.get(CONF_FT_RATE, 0.1623)
-        schema_dict[vol.Required(CONF_FT_RATE, default=float(ft))] = vol.Coerce(float)
-
-        # 4. Imported Energy
-        imp = config.get(CONF_ENERGY_IMPORTED)
-        if imp:
-            schema_dict[vol.Required(CONF_ENERGY_IMPORTED, default=imp)] = selector.EntitySelector(
-                selector.EntitySelectorConfig(domain="sensor")
-            )
-        else:
-            schema_dict[vol.Required(CONF_ENERGY_IMPORTED)] = selector.EntitySelector(
-                selector.EntitySelectorConfig(domain="sensor")
-            )
-
-        # 5. Exported Energy
-        exp = config.get(CONF_ENERGY_EXPORTED)
-        if exp:
-            schema_dict[vol.Optional(CONF_ENERGY_EXPORTED, default=exp)] = selector.EntitySelector(
-                selector.EntitySelectorConfig(domain="sensor")
-            )
-        else:
-            schema_dict[vol.Optional(CONF_ENERGY_EXPORTED)] = selector.EntitySelector(
-                selector.EntitySelectorConfig(domain="sensor")
-            )
-
-        return self.async_show_form(
-            step_id="init", data_schema=vol.Schema(schema_dict), errors=errors
-        )
+        except Exception as e:
+            _LOGGER.error("Error generating options flow: %s", e)
+            raise
