@@ -110,7 +110,7 @@ class ElectricityBillOptionsFlow(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
+        self._entry = config_entry
 
     async def async_step_init(self, user_input=None):
         """Manage the options."""
@@ -127,8 +127,8 @@ class ElectricityBillOptionsFlow(config_entries.OptionsFlow):
                 if not errors:
                     return self.async_create_entry(title="", data=user_input)
 
-            config = self.config_entry.options if self.config_entry.options else self.config_entry.data
-            provider = self.config_entry.data.get(CONF_PROVIDER, "MEA")
+            config = self._entry.options if self._entry.options else self._entry.data
+            provider = self._entry.data.get(CONF_PROVIDER, "MEA")
 
             if provider == "PEA":
                 tariffs = {
