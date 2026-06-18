@@ -2,10 +2,16 @@
   "config": {
     "step": {
       "user": {
+        "title": "Select Provider",
+        "description": "Please select your electricity provider.",
+        "data": {
+          "provider": "Electricity Provider"
+        }
+      },
+      "details": {
         "title": "Thai Electricity Bill Setup",
         "description": "Please configure your electricity bill calculation parameters.",
         "data": {
-          "provider": "Electricity Provider",
           "tariff_type": "Tariff Type",
           "billing_date": "Billing Date (1-31)",
           "ft_rate": "Ft Rate (THB/kWh)",
