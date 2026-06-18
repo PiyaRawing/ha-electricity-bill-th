@@ -34,7 +34,7 @@ recorder:
 
 1. เปิด Home Assistant ไปที่ **HACS** \> **Integrations**  
 2. กดปุ่มจุด 3 จุดที่มุมขวาบน เลือก **Custom repositories**  
-3. ใส่ URL https://github.com/PiyaRawing/ha-electricity-bill-th และเลือก Category เป็น **Integration**  
+3. ใส่ URL `https://github.com/PiyaRawing/ha-electricity-bill-th` และเลือก Category เป็น **Integration**  
 4. กด Add จากนั้นค้นหาคำว่า Thai Electricity Bill แล้วกด Download  
 5. **Restart Home Assistant** 1 รอบ
 
