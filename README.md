@@ -70,6 +70,9 @@ recorder:
 * sensor.\[name\]\_on\_peak\_units : จำนวนหน่วยที่ใช้ในช่วง On-Peak  
 * sensor.\[name\]\_off\_peak\_units : จำนวนหน่วยที่ใช้ในช่วง Off-Peak
 
+<img width="677" height="676" alt="image" src="https://github.com/user-attachments/assets/7aa7b1f6-4da2-4603-b910-26c166ff7302" />
+
+
 ## **📚 ข้อมูลอ้างอิงอัตราค่าไฟฟ้า (Tariff References)**
 
 ระบบคำนวณโดยอิงจากโครงสร้างอัตราค่าไฟฟ้าอย่างเป็นทางการ ดังนี้:
