@@ -93,8 +93,22 @@ recorder:
 * sensor.\[name\]\_on\_peak\_cost : ค่าพลังงานไฟฟ้า On-Peak (บาท)  
 * sensor.\[name\]\_off\_peak\_cost : ค่าพลังงานไฟฟ้า Off-Peak (บาท)
 
-<img width="1111" height="582" alt="image" src="https://github.com/user-attachments/assets/2ddbab21-f594-4845-b10a-2b26ce374b3c" />
-<img width="368" height="837" alt="image" src="https://github.com/user-attachments/assets/481b6a2e-5c68-43eb-a679-610b31c4a870" />
+<img width="" height="450" alt="image" src="https://github.com/user-attachments/assets/2ddbab21-f594-4845-b10a-2b26ce374b3c" />
+<img width="" height="650" alt="image" src="https://github.com/user-attachments/assets/481b6a2e-5c68-43eb-a679-610b31c4a870" />
+
+## **🎨 แนะนำการ์ดแสดงผล (Recommended Lovelace Card)**
+
+เพื่อให้การแสดงผลบิลค่าไฟบน Dashboard ของคุณมีความสวยงาม อ่านง่าย และมีหน้าตาเหมือน "ใบแจ้งค่าไฟฟ้า" ของจริง (แยกตาราง และมีสรุปยอดชัดเจน) เราขอแนะนำให้ติดตั้ง Custom Card ที่ถูกออกแบบมาเพื่อทำงานคู่กับ Integration นี้โดยเฉพาะครับ!
+
+*จุดเด่นของการ์ด:*
+
+* 🎨 Auto-Theming: ปรับโลโก้และสีธีมเป็น MEA (ส้ม) หรือ PEA (ม่วง) ให้เองอัตโนมัติตาม Integration
+* ⚡ TOU & Net-Billing: แสดงตารางแยกหน่วย On/Off-Peak และสรุปยอดขายไฟคืน (โซลาร์เซลล์) ให้เห็นชัดเจน
+* ⚙️ ตั้งค่าง่าย (Zero Config): เพียงแค่คลิกเลือก Sensor Net Bill ตัวเดียวในหน้าต่างตั้งค่า ระบบการ์ดจะดึง Entity ยิบย่อยอื่นๆ ไปประกอบร่างให้อัตโนมัติ
+
+👉 คลิกที่นี่เพื่อดาวน์โหลดและติดตั้ง [Thai Energy Card (Frontend)](https://github.com/PiyaRawing/ha-thai-energy-card)
+
+<img width="" height="650" alt="image" src="https://github.com/user-attachments/assets/48bc233b-9426-42c1-b6d9-f0020d6eb468" />
 
 
 ## **📚 ข้อมูลอ้างอิงอัตราค่าไฟฟ้า (Tariff References)**
