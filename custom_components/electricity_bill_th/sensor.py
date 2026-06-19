@@ -62,6 +62,7 @@ SENSOR_TYPES = {
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator = ElectricityBillCoordinator(hass, config_entry)
     await coordinator.async_setup()
+    
     entities = []
     for st, si in SENSOR_TYPES.items():
         if not coordinator.energy_exported_id and "export" in st:
@@ -69,6 +70,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
         if coordinator.tariff_type not in ["1.3.2", "1.2.2"] and st in ["on_peak_units", "off_peak_units", "on_peak_cost", "off_peak_cost"]:
             continue
         entities.append(ElectricityBillSensor(coordinator, st, si))
+        
     async_add_entities(entities)
 
 class ElectricityBillCoordinator:
@@ -92,26 +94,27 @@ class ElectricityBillCoordinator:
         self._baseline_exported = None
         self._current_billing_period_start = None
         
-        # ตัวแปรสำหรับคำนวณ TOU แบบ Real-time ที่เบาเครื่อง
         self._tou_history_loaded = False
         self._tou_on_peak = 0.0
         self._tou_off_peak = 0.0
         self._last_meter_val = None
 
     def register_entity(self, entity): 
-        self.entities.append(entity)
+        """ฟังก์ชันสำหรับให้ Sensor มารายงานตัว เพื่อรับการแจ้งเตือนตอนอัปเดต"""
+        if entity not in self.entities:
+            self.entities.append(entity)
 
     async def async_setup(self):
         @callback
         def async_state_changed_listener(event): 
-            # เมื่อมิเตอร์ขยับ ให้รันอัปเดต
+            # เมื่อมิเตอร์มีการเปลี่ยนแปลง (วิ่ง) ให้สั่งคำนวณและอัปเดตใหม่
             self.hass.async_create_task(self.async_update())
             
         track_entities = [self.energy_imported_id]
         if self.energy_exported_id: 
             track_entities.append(self.energy_exported_id)
             
-        # ติดตั้งตัวดักจับการเปลี่ยนแปลงมิเตอร์
+        # ผูกตัวดักจับเข้ากับมิเตอร์
         async_track_state_change_event(self.hass, track_entities, async_state_changed_listener)
         await self.async_update()
 
@@ -142,7 +145,6 @@ class ElectricityBillCoordinator:
         return None
 
     def _calculate_tou_units_history(self, entity_id: str, start_dt: datetime, end_dt: datetime) -> tuple[float, float]:
-        """ดึงประวัติก้อนใหญ่เฉพาะครั้งแรกที่ระบบเปิด เพื่อหาค่าเริ่มต้น"""
         from homeassistant.components.recorder import history
         start_dt_utc = dt_util.as_utc(start_dt)
         end_dt_utc = dt_util.as_utc(end_dt)
@@ -172,13 +174,16 @@ class ElectricityBillCoordinator:
         self._baseline_exported = base_exp if base_exp is not None else (self._get_current_state_float(self.energy_exported_id) or 0.0)
         
         self._current_billing_period_start = target_dt
-        self._tou_history_loaded = False # รีเซ็ตประวัติ TOU ทุกครั้งที่ขึ้นรอบบิลใหม่
+        self._tou_history_loaded = False 
 
     async def async_update(self) -> None:
-        """อัปเดตข้อมูล (ชื่อฟังก์ชันแก้ให้ตรงกับที่ HA ต้องการแล้ว)"""
+        # เช็คว่ามิเตอร์มีค่าให้ดึงหรือไม่ ป้องกันการแครชตอน Home Assistant เพิ่งเปิด
+        cur_imp = self._get_current_state_float(self.energy_imported_id)
+        if cur_imp is None:
+            return  
+            
         await self._async_update_baselines()
         
-        cur_imp = self._get_current_state_float(self.energy_imported_id) or 0.0
         cur_exp = self._get_current_state_float(self.energy_exported_id) or 0.0
         
         imp_units = max(0, cur_imp - self._baseline_imported)
@@ -187,9 +192,7 @@ class ElectricityBillCoordinator:
         base_cost, service_charge = 0.0, 0.0
         
         if self.tariff_type in ["1.3.2", "1.2.2"]:
-            # ระบบคำนวณ TOU แบบ Real-time ที่ประหยัดทรัพยากร
             if not self._tou_history_loaded:
-                # ดึงประวัติก้อนใหญ่แค่ครั้งเดียว
                 on_u, off_u = await get_instance(self.hass).async_add_executor_job(
                     self._calculate_tou_units_history, self.energy_imported_id, self._current_billing_period_start, dt_util.now()
                 )
@@ -198,11 +201,9 @@ class ElectricityBillCoordinator:
                 self._tou_history_loaded = True
                 self._last_meter_val = cur_imp
             else:
-                # อัปเดตส่วนต่างแบบ Real-time (เบาเครื่องมาก)
                 if self._last_meter_val is not None and cur_imp > self._last_meter_val:
                     diff = cur_imp - self._last_meter_val
                     now_local = dt_util.now()
-                    # ตรวจสอบ: จ.-ศ. เวลา 09:00 - 22:00 คือ On Peak (ไม่รวมวันหยุดพิเศษตามที่คุณระบุ)
                     if now_local.weekday() < 5 and 9 <= now_local.hour < 22:
                         self._tou_on_peak += diff
                     else:
@@ -243,19 +244,17 @@ class ElectricityBillCoordinator:
             self.data["on_peak_cost"] = 0.0
             self.data["off_peak_cost"] = 0.0
 
-        # --- คำนวณรายละเอียดบิล (นำเข้า) ---
         actual_service_charge = service_charge if imp_units > 0 else 0.0
         ft_cost = imp_units * self.ft_rate
         total_before_vat = base_cost + actual_service_charge + ft_cost
         vat_cost = total_before_vat * 0.07
         import_cost = total_before_vat + vat_cost
 
-        # --- คำนวณรายละเอียดบิล (ส่งออก) ---
         export_before_tax = exp_units * 2.20
-        export_tax = export_before_tax * 0.01  # หักภาษี 1%
+        export_tax = export_before_tax * 0.01  
         export_income = export_before_tax - export_tax
 
-        # เก็บข้อมูลลง Sensor Data
+        # อัปเดตข้อมูลใส่ Dict
         self.data.update({
             "import_units": round(imp_units, 2), 
             "export_units": round(exp_units, 2), 
@@ -266,7 +265,6 @@ class ElectricityBillCoordinator:
             "export_meter_previous": round(self._baseline_exported, 2), 
             "import_meter_current": round(cur_imp, 2), 
             "export_meter_current": round(cur_exp, 2),
-            
             "base_cost": round(base_cost, 2),
             "service_charge": round(actual_service_charge, 2),
             "ft_cost": round(ft_cost, 2),
@@ -275,8 +273,11 @@ class ElectricityBillCoordinator:
             "export_income_before_tax": round(export_before_tax, 2),
             "export_tax": round(export_tax, 2),
         })
-        for entity in self.entities: 
-            entity.async_write_ha_state()
+        
+        # ส่งคำสั่งรีเฟรชไปยัง Sensor บนหน้าจอทั้งหมด
+        for entity in self.entities:
+            if entity.hass: # เช็คก่อนว่าเชื่อมกับหน้าจอสำเร็จหรือยัง ป้องกันบั๊ก
+                entity.async_write_ha_state()
 
 class ElectricityBillSensor(SensorEntity):
     """Representation of an Electricity Bill Sensor."""
@@ -295,10 +296,14 @@ class ElectricityBillSensor(SensorEntity):
             manufacturer="Thai Electricity Bill",
             model=coordinator.provider,
         )
+        
+    async def async_added_to_hass(self) -> None:
+        """ฟังก์ชันนี้จะทำงานตอนที่ Sensor ถูกสร้างเสร็จและแปะขึ้นหน้าจอ HA"""
+        self.coordinator.register_entity(self)
 
     @property
     def should_poll(self) -> bool:
-        """ปิดการ Polling แบบปกติ เพราะเราจับการอัปเดตแบบ Real-time ไปแล้ว (ป้องกันการอัปเดตซ้ำซ้อน)"""
+        """ปิดการ Polling เพื่อประหยัดทรัพยากร เพราะเรารีเฟรชแบบ Real-time อยู่แล้ว"""
         return False
 
     @property

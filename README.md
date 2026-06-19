@@ -81,3 +81,4 @@ recorder:
 
 * **การไฟฟ้านครหลวง (MEA):** [โครงสร้างอัตราค่าไฟฟ้า MEA](https://www.mea.or.th/our-services/service-rates/other/D5xEaEwgU)  
 * **การไฟฟ้าส่วนภูมิภาค (PEA):** [โครงสร้างอัตราค่าไฟฟ้า PEA (PDF)](https://www.pea.co.th/sites/default/files/documents/tariff/Electricity_Tariff_MAY_2023.pdf)
+
