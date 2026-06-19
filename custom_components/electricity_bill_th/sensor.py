@@ -7,7 +7,6 @@ import homeassistant.util.dt as dt_util
 
 from homeassistant.components.sensor import (
     SensorEntity,
-    SensorStateClass,
     SensorDeviceClass,
 )
 from homeassistant.const import UnitOfEnergy
@@ -16,6 +15,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.components.recorder import get_instance
+from homeassistant.helpers.device_registry import DeviceInfo
 
 from .const import (
     DOMAIN,
@@ -29,6 +29,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# เซ็นเซอร์สำหรับการแสดงผล
 SENSOR_TYPES = {
     "net_bill": {"name": "Net Bill", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:currency-thb"},
     "import_cost": {"name": "Imported Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash-minus"},
@@ -39,8 +40,23 @@ SENSOR_TYPES = {
     "export_meter_previous": {"name": "Previous Export Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:counter"},
     "import_meter_current": {"name": "Current Import Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:gauge"},
     "export_meter_current": {"name": "Current Export Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:gauge"},
+    
+    # --- รายละเอียด TOU (On/Off Peak) ---
     "on_peak_units": {"name": "On Peak Units", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:lightning-bolt"},
     "off_peak_units": {"name": "Off Peak Units", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:lightning-bolt-outline"},
+    "on_peak_cost": {"name": "On Peak Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
+    "off_peak_cost": {"name": "Off Peak Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
+    
+    # --- รายละเอียดบิลค่าไฟฟ้า ---
+    "base_cost": {"name": "Base Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
+    "service_charge": {"name": "Service Charge", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
+    "ft_cost": {"name": "Ft Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
+    "total_before_vat": {"name": "Total Before VAT", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
+    "vat": {"name": "VAT", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
+    
+    # --- รายละเอียดรับซื้อไฟคืน ---
+    "export_income_before_tax": {"name": "Export Income Before Tax", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash-plus"},
+    "export_tax": {"name": "Export Tax", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash-minus"},
 }
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
@@ -50,8 +66,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
     for st, si in SENSOR_TYPES.items():
         if not coordinator.energy_exported_id and "export" in st:
             continue
-        # สร้าง entity TOU เฉพาะเมื่อเลือก Tariff แบบ TOU เท่านั้น
-        if coordinator.tariff_type not in ["1.3.2", "1.2.2"] and st in ["on_peak_units", "off_peak_units"]:
+        if coordinator.tariff_type not in ["1.3.2", "1.2.2"] and st in ["on_peak_units", "off_peak_units", "on_peak_cost", "off_peak_cost"]:
             continue
         entities.append(ElectricityBillSensor(coordinator, st, si))
     async_add_entities(entities)
@@ -62,10 +77,9 @@ class ElectricityBillCoordinator:
         self.entry_id = config_entry.entry_id
         self.title = config_entry.title
         
-        # เช็คว่ามีค่าจากการ Re-config ไหม ถ้ามีให้ใช้อันนั้น ถ้าไม่มีให้ใช้ค่าแรกตอนติดตั้ง
         config = config_entry.options if config_entry.options else config_entry.data
         
-        self.provider = config_entry.data.get(CONF_PROVIDER) # การไฟฟ้า ไม่ให้เปลี่ยน
+        self.provider = config_entry.data.get(CONF_PROVIDER) 
         self.tariff_type = config.get(CONF_TARIFF_TYPE)
         self.billing_date = config.get(CONF_BILLING_DATE, 14)
         self.ft_rate = config.get(CONF_FT_RATE, 0.1623)
@@ -77,16 +91,29 @@ class ElectricityBillCoordinator:
         self._baseline_imported = None
         self._baseline_exported = None
         self._current_billing_period_start = None
+        
+        # ตัวแปรสำหรับคำนวณ TOU แบบ Real-time ที่เบาเครื่อง
+        self._tou_history_loaded = False
+        self._tou_on_peak = 0.0
+        self._tou_off_peak = 0.0
+        self._last_meter_val = None
 
-    def register_entity(self, entity): self.entities.append(entity)
+    def register_entity(self, entity): 
+        self.entities.append(entity)
 
     async def async_setup(self):
         @callback
-        def async_state_changed_listener(event): self.hass.async_create_task(self._async_process_update())
+        def async_state_changed_listener(event): 
+            # เมื่อมิเตอร์ขยับ ให้รันอัปเดต
+            self.hass.async_create_task(self.async_update())
+            
         track_entities = [self.energy_imported_id]
-        if self.energy_exported_id: track_entities.append(self.energy_exported_id)
+        if self.energy_exported_id: 
+            track_entities.append(self.energy_exported_id)
+            
+        # ติดตั้งตัวดักจับการเปลี่ยนแปลงมิเตอร์
         async_track_state_change_event(self.hass, track_entities, async_state_changed_listener)
-        await self._async_process_update()
+        await self.async_update()
 
     def _get_last_billing_date(self, now: datetime) -> datetime:
         target = now.replace(day=self.billing_date, hour=0, minute=0, second=0, microsecond=0)
@@ -107,7 +134,6 @@ class ElectricityBillCoordinator:
         return None
 
     def _get_current_state_float(self, entity_id: str) -> float | None:
-        # แก้ไข Bug: เช็คให้แน่ใจว่า entity_id ไม่เป็น None หรือค่าว่างก่อนไปดึงค่า
         if not entity_id: return None
         state = self.hass.states.get(entity_id)
         if state and state.state not in ("unknown", "unavailable"):
@@ -115,20 +141,22 @@ class ElectricityBillCoordinator:
             except ValueError: pass
         return None
 
-    def _calculate_tou_units(self, entity_id: str, start_dt: datetime) -> tuple[float, float]:
+    def _calculate_tou_units_history(self, entity_id: str, start_dt: datetime, end_dt: datetime) -> tuple[float, float]:
+        """ดึงประวัติก้อนใหญ่เฉพาะครั้งแรกที่ระบบเปิด เพื่อหาค่าเริ่มต้น"""
         from homeassistant.components.recorder import history
         start_dt_utc = dt_util.as_utc(start_dt)
-        now_utc = dt_util.utcnow()
+        end_dt_utc = dt_util.as_utc(end_dt)
         on_peak, off_peak = 0.0, 0.0
-        states = history.get_significant_states(self.hass, start_time=start_dt_utc, end_time=now_utc, entity_ids=[entity_id])
+        states = history.get_significant_states(self.hass, start_time=start_dt_utc, end_time=end_dt_utc, entity_ids=[entity_id])
         if entity_id not in states or not states[entity_id]: return 0.0, 0.0
         history_data = states[entity_id]
+        
         for i in range(len(history_data) - 1):
             s1, s2 = history_data[i], history_data[i+1]
             try:
                 diff = float(s2.state) - float(s1.state)
                 if diff <= 0: continue
-                dt = dt_util.as_local(s1.last_changed)
+                dt = dt_util.as_local(s2.last_changed)
                 if dt.weekday() < 5 and 9 <= dt.hour < 22: on_peak += diff
                 else: off_peak += diff
             except (ValueError, TypeError): continue
@@ -137,30 +165,61 @@ class ElectricityBillCoordinator:
     async def _async_update_baselines(self) -> None:
         target_dt = self._get_last_billing_date(dt_util.now())
         if self._current_billing_period_start == target_dt: return
+        
         base_imp = await get_instance(self.hass).async_add_executor_job(self._fetch_history_state, self.energy_imported_id, target_dt)
         base_exp = await get_instance(self.hass).async_add_executor_job(self._fetch_history_state, self.energy_exported_id, target_dt)
         self._baseline_imported = base_imp if base_imp is not None else (self._get_current_state_float(self.energy_imported_id) or 0.0)
         self._baseline_exported = base_exp if base_exp is not None else (self._get_current_state_float(self.energy_exported_id) or 0.0)
+        
         self._current_billing_period_start = target_dt
+        self._tou_history_loaded = False # รีเซ็ตประวัติ TOU ทุกครั้งที่ขึ้นรอบบิลใหม่
 
-    async def _async_process_update(self) -> None:
+    async def async_update(self) -> None:
+        """อัปเดตข้อมูล (ชื่อฟังก์ชันแก้ให้ตรงกับที่ HA ต้องการแล้ว)"""
         await self._async_update_baselines()
+        
         cur_imp = self._get_current_state_float(self.energy_imported_id) or 0.0
         cur_exp = self._get_current_state_float(self.energy_exported_id) or 0.0
+        
         imp_units = max(0, cur_imp - self._baseline_imported)
         exp_units = max(0, cur_exp - self._baseline_exported) if self.energy_exported_id else 0.0
 
         base_cost, service_charge = 0.0, 0.0
         
         if self.tariff_type in ["1.3.2", "1.2.2"]:
-            on_units, off_units = await get_instance(self.hass).async_add_executor_job(self._calculate_tou_units, self.energy_imported_id, self._current_billing_period_start)
-            base_cost = (on_units * 5.7982) + (off_units * 2.6369)
+            # ระบบคำนวณ TOU แบบ Real-time ที่ประหยัดทรัพยากร
+            if not self._tou_history_loaded:
+                # ดึงประวัติก้อนใหญ่แค่ครั้งเดียว
+                on_u, off_u = await get_instance(self.hass).async_add_executor_job(
+                    self._calculate_tou_units_history, self.energy_imported_id, self._current_billing_period_start, dt_util.now()
+                )
+                self._tou_on_peak = on_u
+                self._tou_off_peak = off_u
+                self._tou_history_loaded = True
+                self._last_meter_val = cur_imp
+            else:
+                # อัปเดตส่วนต่างแบบ Real-time (เบาเครื่องมาก)
+                if self._last_meter_val is not None and cur_imp > self._last_meter_val:
+                    diff = cur_imp - self._last_meter_val
+                    now_local = dt_util.now()
+                    # ตรวจสอบ: จ.-ศ. เวลา 09:00 - 22:00 คือ On Peak (ไม่รวมวันหยุดพิเศษตามที่คุณระบุ)
+                    if now_local.weekday() < 5 and 9 <= now_local.hour < 22:
+                        self._tou_on_peak += diff
+                    else:
+                        self._tou_off_peak += diff
+                self._last_meter_val = cur_imp
+                
+            on_cost = self._tou_on_peak * 5.7982
+            off_cost = self._tou_off_peak * 2.6369
+            base_cost = on_cost + off_cost
             service_charge = 24.62
-            imp_units = on_units + off_units
             
-            # เก็บค่าลงตัวแปรเพื่อให้ Entity เอาไปแสดงผล
-            self.data["on_peak_units"] = round(on_units, 2)
-            self.data["off_peak_units"] = round(off_units, 2)
+            imp_units = self._tou_on_peak + self._tou_off_peak
+            self.data["on_peak_units"] = round(self._tou_on_peak, 2)
+            self.data["off_peak_units"] = round(self._tou_off_peak, 2)
+            self.data["on_peak_cost"] = round(on_cost, 2)
+            self.data["off_peak_cost"] = round(off_cost, 2)
+            
         elif self.tariff_type in ["1.1", "1.1.1"]:
             if imp_units > 400: base_cost = (15*2.3488)+(10*2.9882)+(10*3.2405)+(65*3.6237)+(50*3.7171)+(250*4.2218)+((imp_units-400)*4.4217)
             elif imp_units > 150: base_cost = (15*2.3488)+(10*2.9882)+(10*3.2405)+(65*3.6237)+(50*3.7171)+((imp_units-150)*4.2218)
@@ -172,6 +231,8 @@ class ElectricityBillCoordinator:
             service_charge = 8.19
             self.data["on_peak_units"] = 0.0
             self.data["off_peak_units"] = 0.0
+            self.data["on_peak_cost"] = 0.0
+            self.data["off_peak_cost"] = 0.0
         elif self.tariff_type in ["1.2", "1.1.2"]:
             if imp_units > 400: base_cost = (150*3.2484)+(250*4.2218)+((imp_units-400)*4.4217)
             elif imp_units > 150: base_cost = (150*3.2484)+((imp_units-150)*4.2218)
@@ -179,24 +240,77 @@ class ElectricityBillCoordinator:
             service_charge = 24.62
             self.data["on_peak_units"] = 0.0
             self.data["off_peak_units"] = 0.0
+            self.data["on_peak_cost"] = 0.0
+            self.data["off_peak_cost"] = 0.0
 
-        import_cost = ((base_cost + (service_charge if imp_units > 0 else 0) + (imp_units * self.ft_rate)) * 1.07)
-        export_income = (exp_units * 2.20) * 0.99
-        self.data.update({"import_units": round(imp_units, 2), "export_units": round(exp_units, 2), "import_cost": round(import_cost, 2), "export_income": round(export_income, 2), "net_bill": round(import_cost - export_income, 2), "import_meter_previous": round(self._baseline_imported, 2), "export_meter_previous": round(self._baseline_exported, 2), "import_meter_current": round(cur_imp, 2), "export_meter_current": round(cur_exp, 2)})
-        for entity in self.entities: entity.async_write_ha_state()
+        # --- คำนวณรายละเอียดบิล (นำเข้า) ---
+        actual_service_charge = service_charge if imp_units > 0 else 0.0
+        ft_cost = imp_units * self.ft_rate
+        total_before_vat = base_cost + actual_service_charge + ft_cost
+        vat_cost = total_before_vat * 0.07
+        import_cost = total_before_vat + vat_cost
+
+        # --- คำนวณรายละเอียดบิล (ส่งออก) ---
+        export_before_tax = exp_units * 2.20
+        export_tax = export_before_tax * 0.01  # หักภาษี 1%
+        export_income = export_before_tax - export_tax
+
+        # เก็บข้อมูลลง Sensor Data
+        self.data.update({
+            "import_units": round(imp_units, 2), 
+            "export_units": round(exp_units, 2), 
+            "import_cost": round(import_cost, 2), 
+            "export_income": round(export_income, 2), 
+            "net_bill": round(import_cost - export_income, 2), 
+            "import_meter_previous": round(self._baseline_imported, 2), 
+            "export_meter_previous": round(self._baseline_exported, 2), 
+            "import_meter_current": round(cur_imp, 2), 
+            "export_meter_current": round(cur_exp, 2),
+            
+            "base_cost": round(base_cost, 2),
+            "service_charge": round(actual_service_charge, 2),
+            "ft_cost": round(ft_cost, 2),
+            "total_before_vat": round(total_before_vat, 2),
+            "vat": round(vat_cost, 2),
+            "export_income_before_tax": round(export_before_tax, 2),
+            "export_tax": round(export_tax, 2),
+        })
+        for entity in self.entities: 
+            entity.async_write_ha_state()
 
 class ElectricityBillSensor(SensorEntity):
-    _attr_has_entity_name = True
-    _attr_state_class = SensorStateClass.TOTAL
-    def __init__(self, coord, st, si):
-        self.coordinator = coord
-        self.sensor_type = st
-        self._attr_name = si["name"]
-        self._attr_unique_id = f"{coord.entry_id}_{st}"
-        self._attr_device_class = si["device_class"]
-        self._attr_native_unit_of_measurement = si["unit"]
-        self._attr_icon = si["icon"]
-        self._attr_device_info = {"identifiers": {(DOMAIN, coord.entry_id)}, "name": coord.title, "manufacturer": coord.provider, "model": f"Tariff Type {coord.tariff_type}"}
-        coord.register_entity(self)
+    """Representation of an Electricity Bill Sensor."""
+
+    def __init__(self, coordinator: ElectricityBillCoordinator, sensor_type: str, sensor_info: dict):
+        self.coordinator = coordinator
+        self._type = sensor_type
+        self._attr_name = f"{coordinator.title} {sensor_info['name']}"
+        self._attr_unique_id = f"{coordinator.entry_id}_{sensor_type}"
+        self._attr_device_class = sensor_info.get("device_class")
+        self._attr_native_unit_of_measurement = sensor_info.get("unit")
+        self._attr_icon = sensor_info.get("icon")
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry_id)},
+            name=coordinator.title,
+            manufacturer="Thai Electricity Bill",
+            model=coordinator.provider,
+        )
+
     @property
-    def native_value(self): return self.coordinator.data.get(self.sensor_type)
+    def should_poll(self) -> bool:
+        """ปิดการ Polling แบบปกติ เพราะเราจับการอัปเดตแบบ Real-time ไปแล้ว (ป้องกันการอัปเดตซ้ำซ้อน)"""
+        return False
+
+    @property
+    def native_value(self):
+        return self.coordinator.data.get(self._type)
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "provider": self.coordinator.provider,
+            "tariff_type": self.coordinator.tariff_type,
+        }
+
+    async def async_update(self) -> None:
+        await self.coordinator.async_update()
