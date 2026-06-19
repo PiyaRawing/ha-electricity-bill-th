@@ -93,6 +93,10 @@ recorder:
 * sensor.\[name\]\_on\_peak\_cost : ค่าพลังงานไฟฟ้า On-Peak (บาท)  
 * sensor.\[name\]\_off\_peak\_cost : ค่าพลังงานไฟฟ้า Off-Peak (บาท)
 
+<img width="1111" height="582" alt="image" src="https://github.com/user-attachments/assets/2ddbab21-f594-4845-b10a-2b26ce374b3c" />
+<img width="368" height="837" alt="image" src="https://github.com/user-attachments/assets/481b6a2e-5c68-43eb-a679-610b31c4a870" />
+
+
 ## **📚 ข้อมูลอ้างอิงอัตราค่าไฟฟ้า (Tariff References)**
 
 ระบบคำนวณโดยอิงจากโครงสร้างอัตราค่าไฟฟ้าอย่างเป็นทางการ ดังนี้:
