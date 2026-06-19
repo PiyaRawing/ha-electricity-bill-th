@@ -9,11 +9,14 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorDeviceClass,
 )
-from homeassistant.const import UnitOfEnergy
+from homeassistant.const import (
+    UnitOfEnergy,
+    EntityCategory,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.components.recorder import get_instance
 from homeassistant.helpers.device_registry import DeviceInfo
 
@@ -29,40 +32,38 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# เซ็นเซอร์สำหรับการแสดงผล
+# เพิ่มเซ็นเซอร์ย่อยและจัดหมวดหมู่ EntityCategory
 SENSOR_TYPES = {
+    # --- กลุ่มแสดงผลหลัก (Main Entities) ---
     "net_bill": {"name": "Net Bill", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:currency-thb"},
     "import_cost": {"name": "Imported Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash-minus"},
     "export_income": {"name": "Exported Income", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash-plus"},
     "import_units": {"name": "Imported Units", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:transmission-tower-export"},
     "export_units": {"name": "Exported Units", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:transmission-tower-import"},
-    "import_meter_previous": {"name": "Previous Import Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:counter"},
-    "export_meter_previous": {"name": "Previous Export Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:counter"},
-    "import_meter_current": {"name": "Current Import Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:gauge"},
-    "export_meter_current": {"name": "Current Export Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:gauge"},
-    
-    # --- รายละเอียด TOU (On/Off Peak) ---
     "on_peak_units": {"name": "On Peak Units", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:lightning-bolt"},
     "off_peak_units": {"name": "Off Peak Units", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:lightning-bolt-outline"},
-    "on_peak_cost": {"name": "On Peak Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
-    "off_peak_cost": {"name": "Off Peak Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
     
-    # --- รายละเอียดบิลค่าไฟฟ้า ---
-    "base_cost": {"name": "Base Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
-    "service_charge": {"name": "Service Charge", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
-    "ft_cost": {"name": "Ft Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
-    "total_before_vat": {"name": "Total Before VAT", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
-    "vat": {"name": "VAT", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
+    # --- หมวดมิเตอร์และข้อมูลดิบ (Diagnostic) ---
+    "import_meter_previous": {"name": "Previous Import Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:counter", "category": EntityCategory.DIAGNOSTIC},
+    "export_meter_previous": {"name": "Previous Export Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:counter", "category": EntityCategory.DIAGNOSTIC},
+    "import_meter_current": {"name": "Current Import Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:gauge", "category": EntityCategory.DIAGNOSTIC},
+    "export_meter_current": {"name": "Current Export Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:gauge", "category": EntityCategory.DIAGNOSTIC},
     
-    # --- รายละเอียดรับซื้อไฟคืน ---
-    "export_income_before_tax": {"name": "Export Income Before Tax", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash-plus"},
-    "export_tax": {"name": "Export Tax", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash-minus"},
+    # --- หมวดรายละเอียดบิลยิบย่อย (Diagnostic) ---
+    "on_peak_cost": {"name": "On Peak Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash", "category": EntityCategory.DIAGNOSTIC},
+    "off_peak_cost": {"name": "Off Peak Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash", "category": EntityCategory.DIAGNOSTIC},
+    "base_cost": {"name": "Base Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash", "category": EntityCategory.DIAGNOSTIC},
+    "service_charge": {"name": "Service Charge", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash", "category": EntityCategory.DIAGNOSTIC},
+    "ft_cost": {"name": "Ft Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash", "category": EntityCategory.DIAGNOSTIC},
+    "total_before_vat": {"name": "Total Before VAT", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash", "category": EntityCategory.DIAGNOSTIC},
+    "vat": {"name": "VAT", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash", "category": EntityCategory.DIAGNOSTIC},
+    "export_income_before_tax": {"name": "Export Income Before Tax", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash-plus", "category": EntityCategory.DIAGNOSTIC},
+    "export_tax": {"name": "Export Tax", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash-minus", "category": EntityCategory.DIAGNOSTIC},
 }
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator = ElectricityBillCoordinator(hass, config_entry)
     await coordinator.async_setup()
-    
     entities = []
     for st, si in SENSOR_TYPES.items():
         if not coordinator.energy_exported_id and "export" in st:
@@ -70,7 +71,6 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
         if coordinator.tariff_type not in ["1.3.2", "1.2.2"] and st in ["on_peak_units", "off_peak_units", "on_peak_cost", "off_peak_cost"]:
             continue
         entities.append(ElectricityBillSensor(coordinator, st, si))
-        
     async_add_entities(entities)
 
 class ElectricityBillCoordinator:
@@ -100,22 +100,18 @@ class ElectricityBillCoordinator:
         self._last_meter_val = None
 
     def register_entity(self, entity): 
-        """ฟังก์ชันสำหรับให้ Sensor มารายงานตัว เพื่อรับการแจ้งเตือนตอนอัปเดต"""
-        if entity not in self.entities:
-            self.entities.append(entity)
+        self.entities.append(entity)
 
     async def async_setup(self):
         @callback
-        def async_state_changed_listener(event): 
-            # เมื่อมิเตอร์มีการเปลี่ยนแปลง (วิ่ง) ให้สั่งคำนวณและอัปเดตใหม่
+        def async_timer_listener(now): 
+            # สั่งรันอัปเดต
             self.hass.async_create_task(self.async_update())
             
-        track_entities = [self.energy_imported_id]
-        if self.energy_exported_id: 
-            track_entities.append(self.energy_exported_id)
-            
-        # ผูกตัวดักจับเข้ากับมิเตอร์
-        async_track_state_change_event(self.hass, track_entities, async_state_changed_listener)
+        # ตั้งค่าให้อัปเดตข้อมูลทุกๆ 5 นาที
+        async_track_time_interval(self.hass, async_timer_listener, timedelta(minutes=5))
+        
+        # รันการอัปเดตครั้งแรกทันทีตอนเปิดระบบ
         await self.async_update()
 
     def _get_last_billing_date(self, now: datetime) -> datetime:
@@ -177,13 +173,9 @@ class ElectricityBillCoordinator:
         self._tou_history_loaded = False 
 
     async def async_update(self) -> None:
-        # เช็คว่ามิเตอร์มีค่าให้ดึงหรือไม่ ป้องกันการแครชตอน Home Assistant เพิ่งเปิด
-        cur_imp = self._get_current_state_float(self.energy_imported_id)
-        if cur_imp is None:
-            return  
-            
         await self._async_update_baselines()
         
+        cur_imp = self._get_current_state_float(self.energy_imported_id) or 0.0
         cur_exp = self._get_current_state_float(self.energy_exported_id) or 0.0
         
         imp_units = max(0, cur_imp - self._baseline_imported)
@@ -254,7 +246,6 @@ class ElectricityBillCoordinator:
         export_tax = export_before_tax * 0.01  
         export_income = export_before_tax - export_tax
 
-        # อัปเดตข้อมูลใส่ Dict
         self.data.update({
             "import_units": round(imp_units, 2), 
             "export_units": round(exp_units, 2), 
@@ -273,11 +264,8 @@ class ElectricityBillCoordinator:
             "export_income_before_tax": round(export_before_tax, 2),
             "export_tax": round(export_tax, 2),
         })
-        
-        # ส่งคำสั่งรีเฟรชไปยัง Sensor บนหน้าจอทั้งหมด
-        for entity in self.entities:
-            if entity.hass: # เช็คก่อนว่าเชื่อมกับหน้าจอสำเร็จหรือยัง ป้องกันบั๊ก
-                entity.async_write_ha_state()
+        for entity in self.entities: 
+            entity.async_write_ha_state()
 
 class ElectricityBillSensor(SensorEntity):
     """Representation of an Electricity Bill Sensor."""
@@ -290,20 +278,20 @@ class ElectricityBillSensor(SensorEntity):
         self._attr_device_class = sensor_info.get("device_class")
         self._attr_native_unit_of_measurement = sensor_info.get("unit")
         self._attr_icon = sensor_info.get("icon")
+        
+        # ดึงหมวดหมู่ Entity Category ถ้ามีการตั้งค่าไว้ใน SENSOR_TYPES
+        self._attr_entity_category = sensor_info.get("category")
+        
+        # จัดให้ทุก Sensor ไปรวมอยู่ในอุปกรณ์ (Device) เดียวกัน
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, coordinator.entry_id)},
             name=coordinator.title,
             manufacturer="Thai Electricity Bill",
             model=coordinator.provider,
         )
-        
-    async def async_added_to_hass(self) -> None:
-        """ฟังก์ชันนี้จะทำงานตอนที่ Sensor ถูกสร้างเสร็จและแปะขึ้นหน้าจอ HA"""
-        self.coordinator.register_entity(self)
 
     @property
     def should_poll(self) -> bool:
-        """ปิดการ Polling เพื่อประหยัดทรัพยากร เพราะเรารีเฟรชแบบ Real-time อยู่แล้ว"""
         return False
 
     @property
