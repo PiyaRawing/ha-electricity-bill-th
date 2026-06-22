@@ -290,6 +290,10 @@ class ElectricityBillSensor(SensorEntity):
             model=coordinator.provider,
         )
 
+    async def async_added_to_hass(self) -> None:
+        """ลงทะเบียน Sensor ตัวนี้เข้ากับระบบ เพื่อรอรับคำสั่งรีเฟรชหน้าจอทุก 5 นาที"""
+        self.coordinator.register_entity(self)
+
     @property
     def should_poll(self) -> bool:
         return False
