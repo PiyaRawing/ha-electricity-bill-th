@@ -9,10 +9,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorDeviceClass,
 )
-from homeassistant.const import (
-    UnitOfEnergy,
-    EntityCategory,
-)
+from homeassistant.const import UnitOfEnergy
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -34,31 +31,26 @@ _LOGGER = logging.getLogger(__name__)
 
 # เพิ่มเซ็นเซอร์ย่อยและจัดหมวดหมู่ EntityCategory
 SENSOR_TYPES = {
-    # --- กลุ่มแสดงผลหลัก (Main Entities) ---
     "net_bill": {"name": "Net Bill", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:currency-thb"},
     "import_cost": {"name": "Imported Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash-minus"},
     "export_income": {"name": "Exported Income", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash-plus"},
     "import_units": {"name": "Imported Units", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:transmission-tower-export"},
     "export_units": {"name": "Exported Units", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:transmission-tower-import"},
+    "import_meter_previous": {"name": "Previous Import Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:counter"},
+    "export_meter_previous": {"name": "Previous Export Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:counter"},
+    "import_meter_current": {"name": "Current Import Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:gauge"},
+    "export_meter_current": {"name": "Current Export Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:gauge"},
     "on_peak_units": {"name": "On Peak Units", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:lightning-bolt"},
     "off_peak_units": {"name": "Off Peak Units", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:lightning-bolt-outline"},
-    
-    # --- หมวดมิเตอร์และข้อมูลดิบ (Diagnostic) ---
-    "import_meter_previous": {"name": "Previous Import Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:counter", "category": EntityCategory.DIAGNOSTIC},
-    "export_meter_previous": {"name": "Previous Export Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:counter", "category": EntityCategory.DIAGNOSTIC},
-    "import_meter_current": {"name": "Current Import Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:gauge", "category": EntityCategory.DIAGNOSTIC},
-    "export_meter_current": {"name": "Current Export Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:gauge", "category": EntityCategory.DIAGNOSTIC},
-    
-    # --- หมวดรายละเอียดบิลยิบย่อย (Diagnostic) ---
-    "on_peak_cost": {"name": "On Peak Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash", "category": EntityCategory.DIAGNOSTIC},
-    "off_peak_cost": {"name": "Off Peak Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash", "category": EntityCategory.DIAGNOSTIC},
-    "base_cost": {"name": "Base Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash", "category": EntityCategory.DIAGNOSTIC},
-    "service_charge": {"name": "Service Charge", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash", "category": EntityCategory.DIAGNOSTIC},
-    "ft_cost": {"name": "Ft Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash", "category": EntityCategory.DIAGNOSTIC},
-    "total_before_vat": {"name": "Total Before VAT", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash", "category": EntityCategory.DIAGNOSTIC},
-    "vat": {"name": "VAT", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash", "category": EntityCategory.DIAGNOSTIC},
-    "export_income_before_tax": {"name": "Export Income Before Tax", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash-plus", "category": EntityCategory.DIAGNOSTIC},
-    "export_tax": {"name": "Export Tax", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash-minus", "category": EntityCategory.DIAGNOSTIC},
+    "on_peak_cost": {"name": "On Peak Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
+    "off_peak_cost": {"name": "Off Peak Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
+    "base_cost": {"name": "Base Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
+    "service_charge": {"name": "Service Charge", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
+    "ft_cost": {"name": "Ft Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
+    "total_before_vat": {"name": "Total Before VAT", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
+    "vat": {"name": "VAT", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
+    "export_income_before_tax": {"name": "Export Income Before Tax", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash-plus"},
+    "export_tax": {"name": "Export Tax", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash-minus"},
 }
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
@@ -105,13 +97,9 @@ class ElectricityBillCoordinator:
     async def async_setup(self):
         @callback
         def async_timer_listener(now): 
-            # สั่งรันอัปเดต
             self.hass.async_create_task(self.async_update())
             
-        # ตั้งค่าให้อัปเดตข้อมูลทุกๆ 5 นาที
         async_track_time_interval(self.hass, async_timer_listener, timedelta(minutes=5))
-        
-        # รันการอัปเดตครั้งแรกทันทีตอนเปิดระบบ
         await self.async_update()
 
     def _get_last_billing_date(self, now: datetime) -> datetime:
@@ -279,10 +267,6 @@ class ElectricityBillSensor(SensorEntity):
         self._attr_native_unit_of_measurement = sensor_info.get("unit")
         self._attr_icon = sensor_info.get("icon")
         
-        # ดึงหมวดหมู่ Entity Category ถ้ามีการตั้งค่าไว้ใน SENSOR_TYPES
-        self._attr_entity_category = sensor_info.get("category")
-        
-        # จัดให้ทุก Sensor ไปรวมอยู่ในอุปกรณ์ (Device) เดียวกัน
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, coordinator.entry_id)},
             name=coordinator.title,
@@ -291,7 +275,6 @@ class ElectricityBillSensor(SensorEntity):
         )
 
     async def async_added_to_hass(self) -> None:
-        """ลงทะเบียน Sensor ตัวนี้เข้ากับระบบ เพื่อรอรับคำสั่งรีเฟรชหน้าจอทุก 5 นาที"""
         self.coordinator.register_entity(self)
 
     @property
@@ -307,6 +290,7 @@ class ElectricityBillSensor(SensorEntity):
         return {
             "provider": self.coordinator.provider,
             "tariff_type": self.coordinator.tariff_type,
+            "billing_date": self.coordinator.billing_date, # เพิ่มส่งค่า billing_date ให้หน้ากาก
         }
 
     async def async_update(self) -> None:
