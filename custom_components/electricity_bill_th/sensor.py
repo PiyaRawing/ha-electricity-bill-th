@@ -9,7 +9,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorDeviceClass,
 )
-from homeassistant.const import UnitOfEnergy
+from homeassistant.const import UnitOfEnergy, EntityCategory
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -29,28 +29,31 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# เพิ่มเซ็นเซอร์ย่อยและจัดหมวดหมู่ EntityCategory
+# เซ็นเซอร์สำหรับการแสดงผล (จัดหมวดหมู่แล้ว)
 SENSOR_TYPES = {
+    # --- กลุ่มแสดงผลหลัก (ไม่ต้องใส่ category) ---
     "net_bill": {"name": "Net Bill", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:currency-thb"},
     "import_cost": {"name": "Imported Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash-minus"},
     "export_income": {"name": "Exported Income", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash-plus"},
     "import_units": {"name": "Imported Units", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:transmission-tower-export"},
     "export_units": {"name": "Exported Units", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:transmission-tower-import"},
-    "import_meter_previous": {"name": "Previous Import Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:counter"},
-    "export_meter_previous": {"name": "Previous Export Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:counter"},
-    "import_meter_current": {"name": "Current Import Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:gauge"},
-    "export_meter_current": {"name": "Current Export Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:gauge"},
     "on_peak_units": {"name": "On Peak Units", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:lightning-bolt"},
     "off_peak_units": {"name": "Off Peak Units", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:lightning-bolt-outline"},
-    "on_peak_cost": {"name": "On Peak Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
-    "off_peak_cost": {"name": "Off Peak Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
-    "base_cost": {"name": "Base Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
-    "service_charge": {"name": "Service Charge", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
-    "ft_cost": {"name": "Ft Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
-    "total_before_vat": {"name": "Total Before VAT", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
-    "vat": {"name": "VAT", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash"},
-    "export_income_before_tax": {"name": "Export Income Before Tax", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash-plus"},
-    "export_tax": {"name": "Export Tax", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash-minus"},
+    
+    # --- กลุ่มรายละเอียด/วินิจฉัย (ย้ายไปอยู่หมวด Diagnostic) ---
+    "import_meter_previous": {"name": "Previous Import Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:counter", "category": EntityCategory.DIAGNOSTIC},
+    "export_meter_previous": {"name": "Previous Export Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:counter", "category": EntityCategory.DIAGNOSTIC},
+    "import_meter_current": {"name": "Current Import Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:gauge", "category": EntityCategory.DIAGNOSTIC},
+    "export_meter_current": {"name": "Current Export Meter", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "icon": "mdi:gauge", "category": EntityCategory.DIAGNOSTIC},
+    "on_peak_cost": {"name": "On Peak Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash", "category": EntityCategory.DIAGNOSTIC},
+    "off_peak_cost": {"name": "Off Peak Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash", "category": EntityCategory.DIAGNOSTIC},
+    "base_cost": {"name": "Base Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash", "category": EntityCategory.DIAGNOSTIC},
+    "service_charge": {"name": "Service Charge", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash", "category": EntityCategory.DIAGNOSTIC},
+    "ft_cost": {"name": "Ft Cost", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash", "category": EntityCategory.DIAGNOSTIC},
+    "total_before_vat": {"name": "Total Before VAT", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash", "category": EntityCategory.DIAGNOSTIC},
+    "vat": {"name": "VAT", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash", "category": EntityCategory.DIAGNOSTIC},
+    "export_income_before_tax": {"name": "Export Income Before Tax", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash-plus", "category": EntityCategory.DIAGNOSTIC},
+    "export_tax": {"name": "Export Tax", "device_class": SensorDeviceClass.MONETARY, "unit": "THB", "icon": "mdi:cash-minus", "category": EntityCategory.DIAGNOSTIC},
 }
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
@@ -266,6 +269,7 @@ class ElectricityBillSensor(SensorEntity):
         self._attr_device_class = sensor_info.get("device_class")
         self._attr_native_unit_of_measurement = sensor_info.get("unit")
         self._attr_icon = sensor_info.get("icon")
+        self._attr_entity_category = sensor_info.get("category")
         
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, coordinator.entry_id)},
