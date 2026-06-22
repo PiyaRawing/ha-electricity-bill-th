@@ -1,0 +1,6 @@
+{
+  "name": "Thai Electricity Bill",
+  "render_readme": true,
+  "iot_class": "calculated",
+  "hacs": "1.0.0"
+}
