@@ -205,22 +205,31 @@ class ElectricityBillCoordinator:
             self.data["off_peak_cost"] = round(off_cost, 2)
             
         elif self.tariff_type in ["1.1", "1.1.1"]:
-            if imp_units > 400: base_cost = (15*2.3488)+(10*2.9882)+(10*3.2405)+(65*3.6237)+(50*3.7171)+(250*4.2218)+((imp_units-400)*4.4217)
-            elif imp_units > 150: base_cost = (15*2.3488)+(10*2.9882)+(10*3.2405)+(65*3.6237)+(50*3.7171)+((imp_units-150)*4.2218)
-            elif imp_units > 100: base_cost = (15*2.3488)+(10*2.9882)+(10*3.2405)+(65*3.6237)+((imp_units-100)*3.7171)
-            elif imp_units > 35: base_cost = (15*2.3488)+(10*2.9882)+(10*3.2405)+((imp_units-35)*3.6237)
-            elif imp_units > 25: base_cost = (15*2.3488)+(10*2.9882)+((imp_units-25)*3.2405)
-            elif imp_units > 15: base_cost = (15*2.3488)+((imp_units-15)*2.9882)
-            else: base_cost = imp_units * 2.3488
+            if imp_units > 400: 
+                base_cost = (15*2.3488) + (10*2.9882) + (175*3.0000) + (200*4.1584) + ((imp_units-400)*4.3583)
+            elif imp_units > 200: 
+                base_cost = (15*2.3488) + (10*2.9882) + (175*3.0000) + ((imp_units-200)*4.1584)
+            elif imp_units > 25: 
+                base_cost = (15*2.3488) + (10*2.9882) + ((imp_units-25)*3.0000)
+            elif imp_units > 15: 
+                base_cost = (15*2.3488) + ((imp_units-15)*2.9882)
+            else: 
+                base_cost = imp_units * 2.3488
+            
             service_charge = 8.19
             self.data["on_peak_units"] = 0.0
             self.data["off_peak_units"] = 0.0
             self.data["on_peak_cost"] = 0.0
             self.data["off_peak_cost"] = 0.0
+            
         elif self.tariff_type in ["1.2", "1.1.2"]:
-            if imp_units > 400: base_cost = (150*3.2484)+(250*4.2218)+((imp_units-400)*4.4217)
-            elif imp_units > 150: base_cost = (150*3.2484)+((imp_units-150)*4.2218)
-            else: base_cost = imp_units * 3.2484
+            if imp_units > 400: 
+                base_cost = (200*3.0000) + (200*4.1584) + ((imp_units-400)*4.3583)
+            elif imp_units > 200: 
+                base_cost = (200*3.0000) + ((imp_units-200)*4.1584)
+            else: 
+                base_cost = imp_units * 3.0000
+                
             service_charge = 24.62
             self.data["on_peak_units"] = 0.0
             self.data["off_peak_units"] = 0.0
