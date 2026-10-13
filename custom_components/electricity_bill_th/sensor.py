@@ -136,19 +136,47 @@ class ElectricityBillCoordinator:
         start_dt_utc = dt_util.as_utc(start_dt)
         end_dt_utc = dt_util.as_utc(end_dt)
         on_peak, off_peak = 0.0, 0.0
-        states = history.get_significant_states(self.hass, start_time=start_dt_utc, end_time=end_dt_utc, entity_ids=[entity_id])
-        if entity_id not in states or not states[entity_id]: return 0.0, 0.0
-        history_data = states[entity_id]
         
-        for i in range(len(history_data) - 1):
-            s1, s2 = history_data[i], history_data[i+1]
+        states = history.get_significant_states(
+            self.hass, start_time=start_dt_utc, end_time=end_dt_utc, entity_ids=[entity_id]
+        )
+        if entity_id not in states or not states[entity_id]:
+            return 0.0, 0.0
+            
+        history_data = states[entity_id]
+        last_valid_val = None
+        
+        for s in history_data:
+            if s.state in ("unknown", "unavailable"):
+                continue
             try:
-                diff = float(s2.state) - float(s1.state)
-                if diff <= 0: continue
-                dt = dt_util.as_local(s2.last_changed)
-                if dt.weekday() < 5 and 9 <= dt.hour < 22: on_peak += diff
-                else: off_peak += diff
-            except (ValueError, TypeError): continue
+                val = float(s.state)
+            except (ValueError, TypeError):
+                continue
+                
+            # ข้ามค่าที่เป็น 0 หรือติดลบ (ป้องกันมิเตอร์รีเซ็ตเป็น 0 ชั่วคราว)
+            if val <= 0:
+                continue
+                
+            if last_valid_val is None:
+                last_valid_val = val
+                continue
+                
+            diff = val - last_valid_val
+            
+            # ถ้าน้อยกว่าหรือเท่ากับ 0 (เช่น มิเตอร์ดรอปลงชั่วคราว) ให้ข้ามไปโดยไม่อัปเดต last_valid_val
+            # เพื่อรอให้มิเตอร์กลับมาสูงกว่าค่าสูงสุดเดิมก่อน จึงค่อยคิดส่วนต่างจริง
+            if diff <= 0:
+                continue
+                
+            dt = dt_util.as_local(s.last_changed)
+            if dt.weekday() < 5 and 9 <= dt.hour < 22:
+                on_peak += diff
+            else:
+                off_peak += diff
+                
+            last_valid_val = val
+            
         return on_peak, off_peak
 
     async def _async_update_baselines(self) -> None:
@@ -182,16 +210,19 @@ class ElectricityBillCoordinator:
                 self._tou_on_peak = on_u
                 self._tou_off_peak = off_u
                 self._tou_history_loaded = True
-                self._last_meter_val = cur_imp
+                if cur_imp > 0:
+                    self._last_meter_val = cur_imp
             else:
-                if self._last_meter_val is not None and cur_imp > self._last_meter_val:
-                    diff = cur_imp - self._last_meter_val
-                    now_local = dt_util.now()
-                    if now_local.weekday() < 5 and 9 <= now_local.hour < 22:
-                        self._tou_on_peak += diff
-                    else:
-                        self._tou_off_peak += diff
-                self._last_meter_val = cur_imp
+                if cur_imp > 0:
+                    if self._last_meter_val is not None and cur_imp > self._last_meter_val:
+                        diff = cur_imp - self._last_meter_val
+                        now_local = dt_util.now()
+                        if now_local.weekday() < 5 and 9 <= now_local.hour < 22:
+                            self._tou_on_peak += diff
+                        else:
+                            self._tou_off_peak += diff
+                    if self._last_meter_val is None or cur_imp > self._last_meter_val:
+                        self._last_meter_val = cur_imp
                 
             on_cost = self._tou_on_peak * 5.7982
             off_cost = self._tou_off_peak * 2.6369
